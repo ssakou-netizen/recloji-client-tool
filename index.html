@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ドライバー職務経歴書ジェネレーター</title>
+<style>
+  /* =========================================================
+     カラー・基本設定（編集する場合はここの値を変えればOK）
+     ========================================================= */
+  :root{
+    --navy:#1b2a4a;       /* 見出し・帯 */
+    --teal:#0f8a86;       /* アクセント */
+    --coral:#d9603f;      /* 注意（違反あり等） */
+    --ink:#2a313c;        /* 本文 */
+    --muted:#737d8c;      /* 補助テキスト */
+    --line:#d7dde5;       /* 罫線 */
+    --app-bg:#eef1f5;     /* 画面背景 */
+    --pane-bg:#ffffff;
+    --chip-bg:#f1f4f8;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","YuGothic","Meiryo",sans-serif;
+    color:var(--ink); background:var(--app-bg); line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ===== 上部バー ===== */
+  .toolbar{
+    position:sticky; top:0; z-index:10;
+    display:flex; align-items:center; gap:14px;
+    padding:12px 20px; background:var(--navy); color:#fff;
+  }
+  .toolbar h1{font-size:16px; font-weight:700; margin:0; letter-spacing:.04em;}
+  .toolbar .sub{font-size:11px; color:#a9b6cc; margin-left:2px;}
+  .toolbar .spacer{flex:1;}
+  .btn{
+    appearance:none; border:none; border-radius:8px; cursor:pointer;
+    font-size:13px; font-weight:700; padding:9px 16px; font-family:inherit;
+  }
+  .btn-print{background:var(--teal); color:#fff;}
+  .btn-print:hover{background:#0c726f;}
+  .btn-ghost{background:transparent; color:#cdd6e6; border:1px solid #3a4a68;}
+  .btn-ghost:hover{background:#243456;}
+
+  /* ===== 2カラム ===== */
+  .main{display:grid; grid-template-columns:minmax(360px,1fr) auto; gap:0; align-items:start;}
+  @media (max-width:960px){ .main{grid-template-columns:1fr;} }
+
+  /* ===== 入力フォーム ===== */
+  .form-pane{padding:22px 24px 80px; max-width:560px;}
+  .form-pane h2{
+    font-size:12px; font-weight:700; color:var(--teal);
+    letter-spacing:.12em; margin:26px 0 10px; text-transform:none;
+  }
+  .form-pane h2:first-child{margin-top:4px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:12px; color:var(--muted); margin-bottom:4px;}
+  .field input[type=text]{
+    width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px;
+    font-size:14px; font-family:inherit; background:#fff;
+  }
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  select{
+    padding:8px 9px; border:1px solid var(--line); border-radius:8px;
+    font-size:13px; font-family:inherit; background:#fff;
+  }
+  .ym{display:flex; align-items:center; gap:6px;}
+  .ym select{flex:1;}
+  .ym .unit{font-size:12px; color:var(--muted);}
+
+  /* チップ（複数選択） */
+  .chips{display:flex; flex-wrap:wrap; gap:7px; margin-top:2px;}
+  .chip{
+    appearance:none; cursor:pointer; font-family:inherit; font-size:12.5px;
+    padding:6px 12px; border-radius:999px; border:1px solid var(--line);
+    background:var(--chip-bg); color:#52606e;
+  }
+  .chip[aria-pressed="true"]{
+    background:var(--teal); border-color:var(--teal); color:#fff; font-weight:700;
+  }
+
+  /* 職歴カード */
+  .job{
+    border:1px solid var(--line); border-radius:12px; padding:14px 14px 4px;
+    margin-bottom:14px; background:#fcfdfe; position:relative;
+  }
+  .job .job-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+  .job .job-no{font-size:12px; font-weight:700; color:var(--navy);}
+  .job-remove{
+    background:none; border:none; color:var(--coral); cursor:pointer;
+    font-size:12px; font-family:inherit; padding:2px 4px;
+  }
+  .current-line{display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); margin:2px 0 10px;}
+  .current-line input{width:16px; height:16px;}
+  .dur-inline{font-size:12px; color:var(--muted); white-space:nowrap;}
+  .dur-inline strong{color:var(--teal); font-size:13px;}
+  .add-job{
+    width:100%; padding:11px; border:1.5px dashed var(--line); border-radius:10px;
+    background:#fff; color:var(--teal); font-weight:700; font-size:13px; cursor:pointer; font-family:inherit;
+  }
+  .add-job:hover{border-color:var(--teal); background:#f5fbfb;}
+  .freetext{
+    width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px;
+    font-size:13px; font-family:inherit; resize:vertical; min-height:46px;
+  }
+  .hint{font-size:11px; color:var(--muted); margin-top:3px;}
+
+  /* ===== プレビュー（A4用紙） ===== */
+  .preview-pane{padding:22px; overflow:auto; background:#dfe4ec;}
+  .sheet{
+    width:210mm; min-height:297mm; padding:14mm; background:#fff; margin:0 auto;
+    box-shadow:0 4px 24px rgba(20,30,55,.18); color:#222; font-size:11pt; line-height:1.55;
+  }
+  .sheet .doc-head{display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid var(--navy); padding-bottom:6px;}
+  .sheet .doc-title{font-size:20pt; font-weight:700; letter-spacing:.3em; color:var(--navy);}
+  .sheet .doc-date{font-size:9.5pt; color:#555;}
+  .sheet .person{margin:12px 0 4px;}
+  .sheet .person .kana{font-size:8.5pt; color:#666;}
+  .sheet .person .name{font-size:15pt; font-weight:700;}
+  .sheet .person .name .placeholder{color:#bbb; font-weight:400; font-size:12pt;}
+
+  /* サマリー帯 */
+  .summary{display:flex; gap:0; border:1px solid var(--line); border-radius:6px; overflow:hidden; margin:14px 0 18px;}
+  .summary .cell{flex:1; padding:8px 10px; border-right:1px solid var(--line);}
+  .summary .cell:last-child{border-right:none;}
+  .summary .cell .k{font-size:8pt; color:#777; letter-spacing:.04em;}
+  .summary .cell .v{font-size:13pt; font-weight:700; color:var(--navy);}
+  .summary .cell .v.ok{color:var(--teal);}
+  .summary .cell .v.warn{color:var(--coral);}
+  .summary .cell .v small{font-size:9pt; font-weight:700;}
+
+  .sec-title{
+    font-size:10.5pt; font-weight:700; color:#fff; background:var(--navy);
+    padding:4px 10px; border-radius:3px; margin:16px 0 10px; letter-spacing:.06em;
+  }
+
+  /* 職歴ブロック */
+  .exp{margin-bottom:13px; padding-bottom:13px; border-bottom:1px dashed var(--line);}
+  .exp:last-child{border-bottom:none;}
+  .exp .exp-top{display:flex; justify-content:space-between; align-items:baseline; gap:10px;}
+  .exp .exp-company{font-size:11.5pt; font-weight:700;}
+  .exp .exp-period{font-size:10pt; color:#333; white-space:nowrap;}
+  .exp .exp-period .dur{display:inline-block; margin-left:8px; background:var(--chip-bg); color:var(--navy); font-weight:700; border-radius:4px; padding:1px 7px; font-size:9pt;}
+  .exp .exp-emp{font-size:9pt; color:#666; margin-top:1px;}
+  .exp .exp-detail{margin-top:6px; font-size:9.5pt;}
+  .exp .exp-detail .lbl{display:inline-block; min-width:3.5em; color:#777; font-size:8.5pt;}
+  .exp .exp-detail .tags span{display:inline-block; background:#eef4f4; color:#0c6b68; border-radius:4px; padding:1px 8px; margin:1px 4px 1px 0; font-size:8.5pt;}
+  .exp .exp-free{margin-top:4px; font-size:9.5pt; color:#333; white-space:pre-wrap;}
+  .blank-gap{font-size:9pt; color:var(--coral); margin:8px 0; padding-left:2px;}
+
+  .lic-list span{display:inline-block; background:#eef4f4; color:#0c6b68; border-radius:4px; padding:2px 10px; margin:0 6px 6px 0; font-size:9.5pt;}
+  .lic-free{font-size:9.5pt; color:#333; margin-top:2px;}
+  .empty-note{color:#bbb; font-size:9.5pt;}
+
+  .privacy-note{margin-top:18px; font-size:8pt; color:#999; border-top:1px solid var(--line); padding-top:6px;}
+
+  /* ===== 印刷 ===== */
+  @media print{
+    @page{size:A4; margin:0;}
+    .toolbar,.form-pane{display:none !important;}
+    .main{display:block;}
+    .preview-pane{padding:0; overflow:visible; background:#fff;}
+    .sheet{box-shadow:none; margin:0; width:auto; min-height:auto;}
+  }
+</style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <h1>ドライバー職務経歴書ジェネレーター</h1>
+    <span class="sub">入力内容は保存されません</span>
+    <span class="spacer"></span>
+    <button class="btn btn-ghost" id="clearBtn">クリア</button>
+    <button class="btn btn-print" id="printBtn">印刷 / PDFで保存</button>
+  </div>
+
+  <div class="main">
+    <!-- ===== 入力 ===== -->
+    <div class="form-pane">
+
+      <h2>基本情報</h2>
+      <div class="row2">
+        <div class="field">
+          <label>フリガナ</label>
+          <input type="text" id="kana" placeholder="ヤマダ タロウ">
+        </div>
+        <div class="field">
+          <label>氏名</label>
+          <input type="text" id="name" placeholder="山田 太郎">
+        </div>
+      </div>
+
+      <h2>職歴</h2>
+      <div id="jobs"></div>
+      <button class="add-job" id="addJob">＋ 会社を追加</button>
+
+      <h2>保有免許・資格</h2>
+      <div class="chips" id="licenseChips"></div>
+      <div class="field" style="margin-top:10px;">
+        <label>その他の免許・資格（自由入力）</label>
+        <input type="text" id="licenseFree" placeholder="例：運行管理者（貨物）、整備士3級 など">
+      </div>
+
+      <h2>無事故・無違反</h2>
+      <div class="field">
+        <label>直近3年間の運転状況</label>
+        <select id="violation">
+          <option value="ok">直近3年間 無事故・無違反</option>
+          <option value="ng">直近3年間に違反・事故あり</option>
+        </select>
+        <div class="hint">※詳細な違反歴・点数は本書には記載しません（選考が進んだ段階で運転記録証明書等で確認）。</div>
+      </div>
+
+    </div>
+
+    <!-- ===== プレビュー ===== -->
+    <div class="preview-pane">
+      <div class="sheet" id="sheet"><!-- JSで描画 --></div>
+    </div>
+  </div>
+
+<script>
+/* =========================================================
+   選択肢の定義（増やしたい項目はこの配列に足すだけでOK）
+   ========================================================= */
+const EMPLOYMENT = ["正社員","契約社員","派遣社員","アルバイト・パート","業務委託"];
+const VEHICLES   = ["大型","中型","準中型","普通","けん引","トレーラー","大型特殊"];
+const CARGO      = ["一般貨物","食品","冷凍・冷蔵","危険物","建材・重量物","引越","ルート配送","宅配・宅急便","コンビニ配送","工場間輸送"];
+const LICENSES   = ["大型自動車","中型自動車","準中型自動車","普通自動車","けん引","大型特殊","フォークリフト","危険物取扱者(乙4)","玉掛け","運行管理者"];
+
+const NOW = new Date();
+const CUR_Y = NOW.getFullYear(), CUR_M = NOW.getMonth()+1;
+const YEAR_MIN = 1985;
+
+/* =========================================================
+   状態（メモリ上のみ。サーバー送信なし・保存なし）
+   ========================================================= */
+const state = {
+  kana:"", name:"",
+  violation:"ok",
+  licenses:[], licenseFree:"",
+  jobs:[ newJob() ]
+};
+function newJob(){
+  return { company:"", role:"", sY:"", sM:"", eY:"", eM:"", current:false, isDriver:true,
+           employment:"正社員", vehicles:[], cargo:[], free:"" };
+}
+
+/* ===== 年・月のoption生成 ===== */
+/* ===== 西暦→和暦の変換（プルダウンに併記） ===== */
+function wareki(y){
+  y=Number(y);
+  if(y>=2019){ const n=y-2018; return n===1?"令和元":"令和"+n; }
+  if(y>=1989){ const n=y-1988; return n===1?"平成元":"平成"+n; }
+  if(y>=1926){ const n=y-1925; return n===1?"昭和元":"昭和"+n; }
+  return "";
+}
+function yearLabel(y){
+  if(y===2019) return "2019年（令和元・平成31）";
+  if(y===1989) return "1989年（平成元・昭和64）";
+  return `${y}年（${wareki(y)}）`;
+}
+function yearOptions(sel){
+  let o = `<option value="">―</option>`;
+  for(let y=CUR_Y; y>=YEAR_MIN; y--){ o += `<option value="${y}" ${String(sel)===String(y)?"selected":""}>${yearLabel(y)}</option>`; }
+  return o;
+}
+function monthOptions(sel){
+  let o = `<option value="">―</option>`;
+  for(let m=1;m<=12;m++){ o += `<option value="${m}" ${String(sel)===String(m)?"selected":""}>${m}月</option>`; }
+  return o;
+}
+
+/* =========================================================
+   職歴カードの描画
+   ========================================================= */
+function renderJobs(){
+  const wrap = document.getElementById("jobs");
+  wrap.innerHTML = state.jobs.map((j,i)=>`
+    <div class="job" data-i="${i}">
+      <div class="job-head">
+        <span class="job-no">職歴 ${i+1}</span>
+        ${state.jobs.length>1?`<button class="job-remove" data-remove="${i}">削除</button>`:""}
+      </div>
+
+      <div class="field">
+        <label>会社名</label>
+        <input type="text" data-f="company" value="${esc(j.company)}" placeholder="〇〇運送株式会社">
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>入社</label>
+          <div class="ym">
+            <select data-f="sY">${yearOptions(j.sY)}</select>
+            <select data-f="sM">${monthOptions(j.sM)}</select>
+          </div>
+        </div>
+        <div class="field">
+          <label>退社</label>
+          <div class="ym">
+            <select data-f="eY" ${j.current?"disabled":""}>${yearOptions(j.eY)}</select>
+            <select data-f="eM" ${j.current?"disabled":""}>${monthOptions(j.eM)}</select>
+          </div>
+        </div>
+      </div>
+      <div class="current-line">
+        <input type="checkbox" data-f="current" ${j.current?"checked":""} id="cur${i}">
+        <label for="cur${i}" style="margin:0;cursor:pointer;">現在も在籍中</label>
+        <span style="flex:1"></span>
+        <span class="dur-inline">在籍期間 <strong class="job-dur" data-dur="${i}">${jobValid(j)?ymText(inclusiveMonths(j)):"―"}</strong></span>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>雇用形態</label>
+          <select data-f="employment">
+            ${EMPLOYMENT.map(e=>`<option ${j.employment===e?"selected":""}>${e}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label>職種・役割</label>
+          <input type="text" data-f="role" value="${esc(j.role)}" placeholder="例：大型ドライバー / 倉庫内作業">
+        </div>
+      </div>
+
+      <div class="current-line" style="margin-bottom:8px;">
+        <input type="checkbox" data-f="isDriver" ${j.isDriver?"checked":""} id="drv${i}">
+        <label for="drv${i}" style="margin:0;cursor:pointer;">この職歴はドライバー業務（車種・荷種を入力する）</label>
+      </div>
+
+      ${j.isDriver?`
+      <div class="field">
+        <label>運転車種（複数選択可）</label>
+        <div class="chips">
+          ${VEHICLES.map(v=>chip("vehicles",i,v,j.vehicles.includes(v))).join("")}
+        </div>
+      </div>
+
+      <div class="field">
+        <label>荷種・業務内容（複数選択可）</label>
+        <div class="chips">
+          ${CARGO.map(c=>chip("cargo",i,c,j.cargo.includes(c))).join("")}
+        </div>
+      </div>`:""}
+
+      <div class="field">
+        <label>補足（任意・自由入力）</label>
+        <textarea class="freetext" data-f="free" placeholder="${j.isDriver?"例：関西〜関東の長距離ルートを担当。無事故。":"例：入出庫管理とフォークリフト作業を担当。"}">${esc(j.free)}</textarea>
+      </div>
+    </div>
+  `).join("");
+}
+function chip(group,i,val,on){
+  return `<button type="button" class="chip" data-chip="${group}" data-i="${i}" data-val="${esc(val)}" aria-pressed="${on}">${val}</button>`;
+}
+
+/* ===== 免許チップ ===== */
+function renderLicenses(){
+  document.getElementById("licenseChips").innerHTML =
+    LICENSES.map(l=>`<button type="button" class="chip" data-lic="${esc(l)}" aria-pressed="${state.licenses.includes(l)}">${l}</button>`).join("");
+}
+
+/* =========================================================
+   期間計算
+   ========================================================= */
+function jobValid(j){ return j.sY && j.sM && (j.current || (j.eY && j.eM)); }
+function startIdx(j){ return Number(j.sY)*12 + Number(j.sM); }
+function endIdx(j){ return j.current ? (CUR_Y*12+CUR_M) : (Number(j.eY)*12 + Number(j.eM)); }
+function inclusiveMonths(j){ return endIdx(j) - startIdx(j) + 1; }   // 入社月〜退社月を含める
+function ymText(months){
+  if(months<0) months=0;
+  const y=Math.floor(months/12), m=months%12;
+  if(y&&m) return `${y}年${m}ヶ月`;
+  if(y) return `${y}年`;
+  return `${m}ヶ月`;
+}
+function periodLabel(j){
+  const s = `${j.sY}年${j.sM}月`;
+  const e = j.current ? "現在" : `${j.eY}年${j.eM}月`;
+  return `${s} 〜 ${e}`;
+}
+
+/* =========================================================
+   プレビュー描画
+   ========================================================= */
+function renderPreview(){
+  const valid = state.jobs.filter(jobValid).slice().sort((a,b)=>startIdx(a)-startIdx(b));
+
+  const driverMonths = valid.filter(j=>j.isDriver).reduce((s,j)=>s+inclusiveMonths(j),0);
+  const companies = valid.length;
+  const changes = Math.max(0, companies-1);
+
+  // 空白期間の算出
+  const gaps = [];
+  for(let i=0;i<valid.length-1;i++){
+    const g = startIdx(valid[i+1]) - endIdx(valid[i]) - 1;
+    if(g>0){
+      const fromIdx = endIdx(valid[i])+1, toIdx = startIdx(valid[i+1])-1;
+      gaps.push({ afterCompany:i, months:g,
+        from:`${Math.floor((fromIdx-1)/12)}年${((fromIdx-1)%12)+1}月`,
+        to:`${Math.floor((toIdx-1)/12)}年${((toIdx-1)%12)+1}月` });
+    }
+  }
+
+  const dateStr = `${CUR_Y}年${CUR_M}月${NOW.getDate()}日 現在`;
+  const violOk = state.violation==="ok";
+
+  // 職歴HTML
+  let expHtml = "";
+  if(valid.length===0){
+    expHtml = `<div class="empty-note">職歴を入力するとここに表示されます。</div>`;
+  }else{
+    valid.forEach((j,idx)=>{
+      expHtml += `
+        <div class="exp">
+          <div class="exp-top">
+            <span class="exp-company">${esc(j.company)||"（会社名未入力）"}</span>
+            <span class="exp-period">${periodLabel(j)}<span class="dur">${ymText(inclusiveMonths(j))}</span></span>
+          </div>
+          <div class="exp-emp">${esc(j.employment)}${j.role?`　／　${esc(j.role)}`:""}</div>
+          ${(j.isDriver&&j.vehicles.length)?`<div class="exp-detail"><span class="lbl">車種</span><span class="tags">${j.vehicles.map(v=>`<span>${v}</span>`).join("")}</span></div>`:""}
+          ${(j.isDriver&&j.cargo.length)?`<div class="exp-detail"><span class="lbl">業務</span><span class="tags">${j.cargo.map(c=>`<span>${c}</span>`).join("")}</span></div>`:""}
+          ${j.free?`<div class="exp-free">${esc(j.free)}</div>`:""}
+        </div>`;
+      // この会社の後ろに空白期間があれば差し込む
+      const g = gaps.find(x=>x.afterCompany===idx);
+      if(g){ expHtml += `<div class="blank-gap">空白期間 ${ymText(g.months)}（${g.from} 〜 ${g.to}）</div>`; }
+    });
+  }
+
+  // 免許HTML
+  const licHtml = (state.licenses.length || state.licenseFree)
+    ? `<div class="lic-list">${state.licenses.map(l=>`<span>${l}</span>`).join("")}</div>
+       ${state.licenseFree?`<div class="lic-free">${esc(state.licenseFree)}</div>`:""}`
+    : `<div class="empty-note">未入力</div>`;
+
+  document.getElementById("sheet").innerHTML = `
+    <div class="doc-head">
+      <div class="doc-title">職務経歴書</div>
+      <div class="doc-date">${dateStr}</div>
+    </div>
+
+    <div class="person">
+      <div class="kana">${esc(state.kana)||"&nbsp;"}</div>
+      <div class="name">${ state.name ? `氏名　${esc(state.name)}` : `<span class="placeholder">氏名　（未入力）</span>` }</div>
+    </div>
+
+    <div class="summary">
+      <div class="cell"><div class="k">通算ドライバー経験</div><div class="v">${driverMonths?ymText(driverMonths):"―"}</div></div>
+      <div class="cell"><div class="k">経験社数</div><div class="v">${companies?companies+"社":"―"}</div></div>
+      <div class="cell"><div class="k">転職回数</div><div class="v">${companies?changes+"回":"―"}</div></div>
+      <div class="cell"><div class="k">直近3年の運転状況</div><div class="v ${violOk?"ok":"warn"}"><small>${violOk?"無事故・無違反":"違反・事故あり"}</small></div></div>
+    </div>
+
+    <div class="sec-title">職務経歴</div>
+    ${expHtml}
+
+    <div class="sec-title">保有免許・資格</div>
+    ${licHtml}
+
+    <div class="privacy-note">本書は応募者本人の申告内容に基づき作成されています。免許の違反・事故の詳細は、選考段階で運転記録証明書等により別途確認されることを前提としています。</div>
+  `;
+}
+
+/* =========================================================
+   イベント処理
+   ========================================================= */
+// 基本情報
+document.getElementById("kana").addEventListener("input",e=>{state.kana=e.target.value; renderPreview();});
+document.getElementById("name").addEventListener("input",e=>{state.name=e.target.value; renderPreview();});
+document.getElementById("violation").addEventListener("change",e=>{state.violation=e.target.value; renderPreview();});
+document.getElementById("licenseFree").addEventListener("input",e=>{state.licenseFree=e.target.value; renderPreview();});
+
+// 免許チップ
+document.getElementById("licenseChips").addEventListener("click",e=>{
+  const b=e.target.closest("[data-lic]"); if(!b) return;
+  const v=b.dataset.lic;
+  const i=state.licenses.indexOf(v);
+  if(i>=0) state.licenses.splice(i,1); else state.licenses.push(v);
+  b.setAttribute("aria-pressed", state.licenses.includes(v));
+  renderPreview();
+});
+
+// 職歴：追加
+document.getElementById("addJob").addEventListener("click",()=>{
+  state.jobs.push(newJob()); renderJobs(); renderPreview();
+});
+
+// 職歴：入力（テキスト・テキストエリア）
+document.getElementById("jobs").addEventListener("input",e=>{
+  const card=e.target.closest(".job"); if(!card) return;
+  const i=Number(card.dataset.i), f=e.target.dataset.f;
+  if(!f) return;
+  state.jobs[i][f]=e.target.value; renderPreview();
+});
+
+// 職歴：select / checkbox / チップ / 削除
+document.getElementById("jobs").addEventListener("change",e=>{
+  const card=e.target.closest(".job"); if(!card) return;
+  const i=Number(card.dataset.i), f=e.target.dataset.f;
+  if(!f) return;
+  if(f==="current"){
+    state.jobs[i].current=e.target.checked;
+    renderJobs();           // 退社欄の有効/無効を更新するため再描画
+  }else if(f==="isDriver"){
+    state.jobs[i].isDriver=e.target.checked;
+    renderJobs();           // 車種・荷種欄の表示/非表示を切り替えるため再描画
+  }else{
+    state.jobs[i][f]=e.target.value;
+    if(["sY","sM","eY","eM"].includes(f)) updateJobDur(i);  // 在籍期間を即時更新
+  }
+  renderPreview();
+});
+
+// 入力カード内の「在籍期間 ◯年◯ヶ月」をその場で更新
+function updateJobDur(i){
+  const el=document.querySelector(`[data-dur="${i}"]`);
+  if(!el) return;
+  const j=state.jobs[i];
+  el.textContent = jobValid(j)?ymText(inclusiveMonths(j)):"―";
+}
+document.getElementById("jobs").addEventListener("click",e=>{
+  // チップ（車種・荷種）
+  const chip=e.target.closest("[data-chip]");
+  if(chip){
+    const i=Number(chip.dataset.i), group=chip.dataset.chip, val=chip.dataset.val;
+    const arr=state.jobs[i][group];
+    const k=arr.indexOf(val);
+    if(k>=0) arr.splice(k,1); else arr.push(val);
+    chip.setAttribute("aria-pressed", arr.includes(val));
+    renderPreview();
+    return;
+  }
+  // 削除
+  const rm=e.target.closest("[data-remove]");
+  if(rm){
+    state.jobs.splice(Number(rm.dataset.remove),1);
+    renderJobs(); renderPreview();
+  }
+});
+
+// クリア
+document.getElementById("clearBtn").addEventListener("click",()=>{
+  if(!confirm("入力内容をすべて消去します。よろしいですか？")) return;
+  state.kana=""; state.name=""; state.violation="ok";
+  state.licenses=[]; state.licenseFree="";
+  state.jobs=[ newJob() ];
+  document.getElementById("kana").value="";
+  document.getElementById("name").value="";
+  document.getElementById("violation").value="ok";
+  document.getElementById("licenseFree").value="";
+  renderLicenses(); renderJobs(); renderPreview();
+});
+
+// 印刷
+document.getElementById("printBtn").addEventListener("click",()=>window.print());
+
+/* ===== HTMLエスケープ ===== */
+function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ===== 初期描画 ===== */
+renderLicenses();
+renderJobs();
+renderPreview();
+</script>
+</body>
+</html>
