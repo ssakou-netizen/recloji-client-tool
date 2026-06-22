@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ドライバー職務経歴書ジェネレーター</title>
+<title>職務経歴書ジェネレーター</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   /* =========================================================
      カラー・基本設定（編集する場合はここの値を変えればOK）
@@ -20,7 +21,7 @@
     --chip-bg:#f1f4f8;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
+  html,body{margin:0;padding:0; overflow-x:hidden; max-width:100%;}
   body{
     font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","YuGothic","Meiryo",sans-serif;
     color:var(--ink); background:var(--app-bg); line-height:1.6;
@@ -42,12 +43,26 @@
   }
   .btn-print{background:var(--teal); color:#fff;}
   .btn-print:hover{background:#0c726f;}
+  .btn-img{background:#2a3f63; color:#fff;}
+  .btn-img:hover{background:#22324f;}
+  .btn-img:disabled{opacity:.6; cursor:default;}
   .btn-ghost{background:transparent; color:#cdd6e6; border:1px solid #3a4a68;}
   .btn-ghost:hover{background:#243456;}
 
   /* ===== 2カラム ===== */
   .main{display:grid; grid-template-columns:minmax(360px,1fr) auto; gap:0; align-items:start;}
-  @media (max-width:960px){ .main{grid-template-columns:1fr;} }
+  @media (max-width:1200px){
+    .main{grid-template-columns:1fr;}
+    .row2{grid-template-columns:1fr;}
+    .form-pane{padding:18px 16px 70px; max-width:none;}
+    .preview-pane{padding:12px;}
+    .sheet{padding:18px; min-height:auto;}
+    .toolbar{flex-wrap:wrap; padding:10px 14px; gap:8px;}
+    .toolbar h1{font-size:14px;}
+    .toolbar .sub{display:none;}
+    .toolbar .spacer{flex-basis:100%; height:0;}
+    .btn{padding:8px 12px; font-size:12px;}
+  }
 
   /* ===== 入力フォーム ===== */
   .form-pane{padding:22px 24px 80px; max-width:560px;}
@@ -63,12 +78,13 @@
     font-size:14px; font-family:inherit; background:#fff;
   }
   .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .row2>*{min-width:0;}
   select{
     padding:8px 9px; border:1px solid var(--line); border-radius:8px;
-    font-size:13px; font-family:inherit; background:#fff;
+    font-size:13px; font-family:inherit; background:#fff; max-width:100%;
   }
-  .ym{display:flex; align-items:center; gap:6px;}
-  .ym select{flex:1;}
+  .ym{display:flex; align-items:center; gap:6px; min-width:0;}
+  .ym select{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;}
   .ym .unit{font-size:12px; color:var(--muted);}
 
   /* チップ（複数選択） */
@@ -111,7 +127,7 @@
   /* ===== プレビュー（A4用紙） ===== */
   .preview-pane{padding:22px; overflow:auto; background:#dfe4ec;}
   .sheet{
-    width:210mm; min-height:297mm; padding:14mm; background:#fff; margin:0 auto;
+    width:210mm; max-width:100%; min-height:297mm; padding:14mm; background:#fff; margin:0 auto;
     box-shadow:0 4px 24px rgba(20,30,55,.18); color:#222; font-size:11pt; line-height:1.55;
   }
   .sheet .doc-head{display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid var(--navy); padding-bottom:6px;}
@@ -157,23 +173,65 @@
 
   .privacy-note{margin-top:18px; font-size:8pt; color:#999; border-top:1px solid var(--line); padding-top:6px;}
 
+  /* ===== スマホ（375px想定）：横スクロールを絶対に出さない ===== */
+  @media (max-width:768px){
+    /* レイアウトを完全1カラムに */
+    .main{grid-template-columns:1fr;}
+    .form-pane{padding:16px 14px 70px; max-width:100%; width:100%; min-width:0;}
+
+    /* 原因4: row2 をスマホで確実に1列。grid子の収縮を許可 */
+    .row2{grid-template-columns:1fr; gap:8px;}
+    .row2>*{min-width:0;}
+    .field{min-width:0;}
+
+    /* 原因2・3: 年月select。和暦併記で長くても親を押し広げない。
+       年は残り幅いっぱい、月は内容ぶんだけ。 */
+    .ym{min-width:0;}
+    .ym select{min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis;}
+    .ym select[data-f$="Y"]{flex:1 1 auto;}     /* sY / eY（年） */
+    .ym select[data-f$="M"]{flex:0 0 auto; width:auto;} /* sM / eM（月） */
+    select{max-width:100%;}
+
+    /* 原因5: プレビュー領域は横スクロールを作らない（スマホは確認用） */
+    .preview-pane{padding:10px; overflow:hidden;}
+
+    /* 原因1: width:210mm を完全に外して width:100% に */
+    .sheet{
+      width:100%; max-width:100%; min-height:auto;
+      padding:18px; font-size:10.5pt;
+    }
+    /* 用紙内の nowrap 要素がはみ出さないよう折り返す */
+    .sheet .doc-head{flex-wrap:wrap; gap:4px;}
+    .sheet .doc-title{font-size:17pt; letter-spacing:.12em;}
+    .exp .exp-top{flex-wrap:wrap;}
+    .exp .exp-period{white-space:normal;}
+    .exp .exp-period .dur{margin-left:0;}
+
+    /* サマリー帯：4セル横並びだと潰れるので 2×2 に */
+    .summary{display:grid; grid-template-columns:1fr 1fr;}
+    .summary .cell{border-right:1px solid var(--line); border-bottom:1px solid var(--line);}
+    .summary .cell:nth-child(2n){border-right:none;}
+    .summary .cell:nth-child(n+3){border-bottom:none;}
+  }
+
   /* ===== 印刷 ===== */
   @media print{
     @page{size:A4; margin:0;}
     .toolbar,.form-pane{display:none !important;}
     .main{display:block;}
     .preview-pane{padding:0; overflow:visible; background:#fff;}
-    .sheet{box-shadow:none; margin:0; width:auto; min-height:auto;}
+    .sheet{box-shadow:none; margin:0; width:auto; max-width:none; min-height:auto; padding:14mm;}
   }
 </style>
 </head>
 <body>
 
   <div class="toolbar">
-    <h1>ドライバー職務経歴書ジェネレーター</h1>
+    <h1>職務経歴書ジェネレーター</h1>
     <span class="sub">入力内容は保存されません</span>
     <span class="spacer"></span>
     <button class="btn btn-ghost" id="clearBtn">クリア</button>
+    <button class="btn btn-img" id="imgBtn">画像で保存</button>
     <button class="btn btn-print" id="printBtn">印刷 / PDFで保存</button>
   </div>
 
@@ -558,6 +616,35 @@ document.getElementById("clearBtn").addEventListener("click",()=>{
 
 // 印刷
 document.getElementById("printBtn").addEventListener("click",()=>window.print());
+
+// 画像で保存（PNG）
+document.getElementById("imgBtn").addEventListener("click",saveImage);
+async function saveImage(){
+  if(typeof html2canvas!=="function"){
+    alert("画像変換ライブラリの読み込みに失敗しました。通信環境をご確認のうえ、再度お試しください。");
+    return;
+  }
+  const sheet=document.getElementById("sheet");
+  const btn=document.getElementById("imgBtn");
+  const label=btn.textContent; btn.textContent="作成中…"; btn.disabled=true;
+
+  // 画面幅に関係なく、A4相当の大きさ・余白で高解像度に描き出す
+  const saved={w:sheet.style.width, mw:sheet.style.maxWidth, mh:sheet.style.minHeight, p:sheet.style.padding};
+  sheet.style.width="794px"; sheet.style.maxWidth="794px"; sheet.style.minHeight="auto"; sheet.style.padding="40px";
+  try{
+    const canvas=await html2canvas(sheet,{scale:2, backgroundColor:"#ffffff", useCORS:true});
+    const a=document.createElement("a");
+    a.download=`職務経歴書_${(state.name||"未入力").replace(/\s+/g,"")}.png`;
+    a.href=canvas.toDataURL("image/png");
+    a.click();
+  }catch(err){
+    console.error(err);
+    alert("画像の作成に失敗しました。");
+  }finally{
+    sheet.style.width=saved.w; sheet.style.maxWidth=saved.mw; sheet.style.minHeight=saved.mh; sheet.style.padding=saved.p;
+    btn.textContent=label; btn.disabled=false;
+  }
+}
 
 /* ===== HTMLエスケープ ===== */
 function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
