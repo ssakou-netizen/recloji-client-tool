@@ -137,6 +137,16 @@
   .sheet .person .kana{font-size:8.5pt; color:#666;}
   .sheet .person .name{font-size:15pt; font-weight:700;}
   .sheet .person .name .placeholder{color:#bbb; font-weight:400; font-size:12pt;}
+  .sheet .person .meta{font-size:9.5pt; color:#444; margin-top:2px;}
+  .sheet .person .meta .lbl{display:inline-block; min-width:3em; color:#777;}
+
+  /* 距離表示ボックス（代理入力モード） */
+  .distbox{
+    margin-top:2px; padding:11px 13px; border:1px solid var(--line); border-radius:8px;
+    background:#f5fbfb; color:var(--navy); font-size:13px; line-height:1.5;
+  }
+  .distbox strong{color:var(--teal); font-size:16px;}
+  .distbox.err{background:#fdf3f0; color:var(--coral);}
 
   /* サマリー帯 */
   .summary{display:flex; gap:0; border:1px solid var(--line); border-radius:6px; overflow:hidden; margin:14px 0 18px;}
@@ -250,6 +260,36 @@
           <input type="text" id="name" placeholder="山田 太郎">
         </div>
       </div>
+      <div class="row2">
+        <div class="field">
+          <label>年齢</label>
+          <input type="text" id="age" inputmode="numeric" placeholder="35">
+        </div>
+        <div class="field">
+          <label>郵便番号（住所を自動入力）</label>
+          <input type="text" id="zip" inputmode="numeric" placeholder="100-0001">
+        </div>
+      </div>
+      <div class="field">
+        <label>住所</label>
+        <input type="text" id="addr" placeholder="郵便番号を入れると自動入力。番地まで入れると精度UP">
+      </div>
+
+      <div id="workSection">
+        <h2>勤務地（距離の基準）</h2>
+        <div class="row2">
+          <div class="field">
+            <label>勤務地の郵便番号（住所を自動入力）</label>
+            <input type="text" id="workZip" inputmode="numeric" placeholder="231-0023">
+          </div>
+          <div class="field">
+            <label>勤務地の住所</label>
+            <input type="text" id="workAddr" placeholder="神奈川県横浜市中区山下町1">
+          </div>
+        </div>
+        <div class="distbox" id="distBox">自宅住所と勤務地を入力すると、直線距離を自動計算します。</div>
+        <div class="hint">直線距離（地図上の最短距離）です。実際の道のり・通勤時間とは異なります。位置は国土地理院・郵便番号データで自動取得します。</div>
+      </div>
 
       <h2>職歴</h2>
       <div id="jobs"></div>
@@ -262,14 +302,16 @@
         <input type="text" id="licenseFree" placeholder="例：運行管理者（貨物）、整備士3級 など">
       </div>
 
-      <h2>無事故・無違反</h2>
-      <div class="field">
-        <label>直近3年間の運転状況</label>
-        <select id="violation">
-          <option value="ok">直近3年間 無事故・無違反</option>
-          <option value="ng">直近3年間に違反・事故あり</option>
-        </select>
-        <div class="hint">※詳細な違反歴・点数は本書には記載しません（選考が進んだ段階で運転記録証明書等で確認）。</div>
+      <div id="violSection">
+        <h2>無事故・無違反</h2>
+        <div class="field">
+          <label>直近3年間の運転状況</label>
+          <select id="violation">
+            <option value="ok">直近3年間 無事故・無違反</option>
+            <option value="ng">直近3年間に違反・事故あり</option>
+          </select>
+          <div class="hint">※詳細な違反歴・点数は本書には記載しません（選考が進んだ段階で運転記録証明書等で確認）。</div>
+        </div>
       </div>
 
     </div>
@@ -294,13 +336,22 @@ const CUR_Y = NOW.getFullYear(), CUR_M = NOW.getMonth()+1;
 const YEAR_MIN = 1985;
 
 /* =========================================================
+   入口モード判定
+   通常URL（?なし）      → 求職者本人版（事故歴あり・距離なし）
+   ?mode=agent           → 人材会社・代理入力版（事故歴なし・距離あり）
+   ========================================================= */
+const MODE = (new URLSearchParams(location.search).get("mode") === "agent") ? "agent" : "seeker";
+const IS_AGENT = (MODE === "agent");
+
+/* =========================================================
    状態（メモリ上のみ。サーバー送信なし・保存なし）
    ========================================================= */
 const state = {
-  kana:"", name:"",
+  kana:"", name:"", age:"", zip:"", addr:"",
   violation:"ok",
   licenses:[], licenseFree:"",
-  jobs:[ newJob() ]
+  jobs:[ newJob() ],
+  workZip:"", workAddr:"", distKm:null
 };
 function newJob(){
   return { company:"", role:"", sY:"", sM:"", eY:"", eM:"", current:false, isDriver:true,
@@ -443,6 +494,73 @@ function periodLabel(j){
 }
 
 /* =========================================================
+   住所・距離まわり（代理入力版のみ使用）
+   ・郵便番号→住所：zipcloud（無料・登録不要）
+   ・住所→緯度経度：国土地理院ジオコーディング（無料・登録不要・CORS対応）
+   ・距離：直線距離（ハバサイン）
+   ========================================================= */
+async function zipToAddress(zip){
+  const z = String(zip).replace(/[^0-9]/g,"");
+  if(z.length !== 7) return null;
+  try{
+    const r = await fetch("https://zipcloud.ibsnet.co.jp/api/search?zipcode=" + z);
+    const d = await r.json();
+    if(d.status === 200 && d.results && d.results[0]){
+      const a = d.results[0];
+      return (a.address1||"") + (a.address2||"") + (a.address3||"");
+    }
+  }catch(e){ console.error("zip error", e); }
+  return null;
+}
+async function geocode(addr){
+  if(!addr || !addr.trim()) return null;
+  try{
+    const r = await fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q=" + encodeURIComponent(addr.trim()));
+    const d = await r.json();
+    if(Array.isArray(d) && d[0] && d[0].geometry && d[0].geometry.coordinates){
+      const c = d[0].geometry.coordinates; // [経度, 緯度]
+      return { lat:c[1], lng:c[0] };
+    }
+  }catch(e){ console.error("geocode error", e); }
+  return null;
+}
+function haversineKm(a, b){
+  const R = 6371, toRad = x => x * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+}
+
+let distTimer = null;
+function scheduleDistance(){
+  if(!IS_AGENT) return;
+  clearTimeout(distTimer);
+  distTimer = setTimeout(updateDistance, 700);   // 入力が落ち着いてから計算（APIへの過負荷防止）
+}
+async function updateDistance(){
+  if(!IS_AGENT) return;
+  const box = document.getElementById("distBox");
+  const home = (state.addr||"").trim(), work = (state.workAddr||"").trim();
+  if(!home || !work){
+    state.distKm = null;
+    if(box){ box.className="distbox"; box.textContent = "自宅住所と勤務地を入力すると、直線距離を自動計算します。"; }
+    renderPreview();
+    return;
+  }
+  if(box){ box.className="distbox"; box.textContent = "距離を計算中…"; }
+  const [h, w] = await Promise.all([geocode(home), geocode(work)]);
+  if(!h || !w){
+    state.distKm = null;
+    if(box){ box.className="distbox err"; box.textContent = "住所から位置を特定できませんでした。表記（番地・ビル名など）を調整して再入力してください。"; }
+    renderPreview();
+    return;
+  }
+  state.distKm = haversineKm(h, w);
+  if(box){ box.className="distbox"; box.innerHTML = "自宅 → 勤務地　直線距離 <strong>約" + state.distKm.toFixed(1) + "km</strong>"; }
+  renderPreview();
+}
+
+/* =========================================================
    プレビュー描画
    ========================================================= */
 function renderPreview(){
@@ -505,13 +623,18 @@ function renderPreview(){
     <div class="person">
       <div class="kana">${esc(state.kana)||"&nbsp;"}</div>
       <div class="name">${ state.name ? `氏名　${esc(state.name)}` : `<span class="placeholder">氏名　（未入力）</span>` }</div>
+      ${ state.age ? `<div class="meta"><span class="lbl">年齢</span>${esc(state.age)}歳</div>` : "" }
+      ${ state.addr ? `<div class="meta"><span class="lbl">住所</span>${esc(state.addr)}</div>` : "" }
     </div>
 
     <div class="summary">
       <div class="cell"><div class="k">通算ドライバー経験</div><div class="v">${driverMonths?ymText(driverMonths):"―"}</div></div>
       <div class="cell"><div class="k">経験社数</div><div class="v">${companies?companies+"社":"―"}</div></div>
       <div class="cell"><div class="k">転職回数</div><div class="v">${companies?changes+"回":"―"}</div></div>
-      <div class="cell"><div class="k">直近3年の運転状況</div><div class="v ${violOk?"ok":"warn"}"><small>${violOk?"無事故・無違反":"違反・事故あり"}</small></div></div>
+      ${ IS_AGENT
+        ? `<div class="cell"><div class="k">勤務地まで(直線)</div><div class="v">${ state.distKm!=null ? ("約"+state.distKm.toFixed(1)+"km") : "―" }</div></div>`
+        : `<div class="cell"><div class="k">直近3年の運転状況</div><div class="v ${violOk?"ok":"warn"}"><small>${violOk?"無事故・無違反":"違反・事故あり"}</small></div></div>`
+      }
     </div>
 
     <div class="sec-title">職務経歴</div>
@@ -520,7 +643,9 @@ function renderPreview(){
     <div class="sec-title">保有免許・資格</div>
     ${licHtml}
 
-    <div class="privacy-note">本書は応募者本人の申告内容に基づき作成されています。免許の違反・事故の詳細は、選考段階で運転記録証明書等により別途確認されることを前提としています。</div>
+    <div class="privacy-note">${ IS_AGENT
+      ? "本書は応募者へのヒアリング内容に基づき作成されています。記載内容は選考段階で別途確認されることを前提としています。"
+      : "本書は応募者本人の申告内容に基づき作成されています。免許の違反・事故の詳細は、選考段階で運転記録証明書等により別途確認されることを前提としています。" }</div>
   `;
 }
 
@@ -532,6 +657,59 @@ document.getElementById("kana").addEventListener("input",e=>{state.kana=e.target
 document.getElementById("name").addEventListener("input",e=>{state.name=e.target.value; renderPreview();});
 document.getElementById("violation").addEventListener("change",e=>{state.violation=e.target.value; renderPreview();});
 document.getElementById("licenseFree").addEventListener("input",e=>{state.licenseFree=e.target.value; renderPreview();});
+
+// 年齢
+document.getElementById("age").addEventListener("input",e=>{
+  state.age = e.target.value.replace(/[^0-9]/g,"");
+  if(e.target.value !== state.age) e.target.value = state.age;
+  renderPreview();
+});
+// 郵便番号（応募者）→ 住所を自動入力
+document.getElementById("zip").addEventListener("input",e=>{
+  state.zip = e.target.value;
+  const z = state.zip.replace(/[^0-9]/g,"");
+  if(z.length === 7){
+    zipToAddress(z).then(a=>{
+      if(a){
+        state.addr = a;
+        document.getElementById("addr").value = a;
+        renderPreview();
+        scheduleDistance();
+      }
+    });
+  }
+});
+// 住所（応募者・手入力／番地追記）
+document.getElementById("addr").addEventListener("input",e=>{
+  state.addr = e.target.value;
+  renderPreview();
+  scheduleDistance();
+});
+
+// 勤務地（代理入力版のみ存在）
+const workZipEl = document.getElementById("workZip");
+if(workZipEl){
+  workZipEl.addEventListener("input",e=>{
+    state.workZip = e.target.value;
+    const z = state.workZip.replace(/[^0-9]/g,"");
+    if(z.length === 7){
+      zipToAddress(z).then(a=>{
+        if(a){
+          state.workAddr = a;
+          document.getElementById("workAddr").value = a;
+          scheduleDistance();
+        }
+      });
+    }
+  });
+}
+const workAddrEl = document.getElementById("workAddr");
+if(workAddrEl){
+  workAddrEl.addEventListener("input",e=>{
+    state.workAddr = e.target.value;
+    scheduleDistance();
+  });
+}
 
 // 免許チップ
 document.getElementById("licenseChips").addEventListener("click",e=>{
@@ -604,13 +782,21 @@ document.getElementById("jobs").addEventListener("click",e=>{
 // クリア
 document.getElementById("clearBtn").addEventListener("click",()=>{
   if(!confirm("入力内容をすべて消去します。よろしいですか？")) return;
-  state.kana=""; state.name=""; state.violation="ok";
+  state.kana=""; state.name=""; state.age=""; state.zip=""; state.addr=""; state.violation="ok";
   state.licenses=[]; state.licenseFree="";
   state.jobs=[ newJob() ];
+  state.workZip=""; state.workAddr=""; state.distKm=null;
   document.getElementById("kana").value="";
   document.getElementById("name").value="";
+  document.getElementById("age").value="";
+  document.getElementById("zip").value="";
+  document.getElementById("addr").value="";
   document.getElementById("violation").value="ok";
   document.getElementById("licenseFree").value="";
+  const wz=document.getElementById("workZip"); if(wz) wz.value="";
+  const wa=document.getElementById("workAddr"); if(wa) wa.value="";
+  const box=document.getElementById("distBox");
+  if(box){ box.className="distbox"; box.textContent="自宅住所と勤務地を入力すると、直線距離を自動計算します。"; }
   renderLicenses(); renderJobs(); renderPreview();
 });
 
@@ -648,6 +834,25 @@ async function saveImage(){
 
 /* ===== HTMLエスケープ ===== */
 function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* =========================================================
+   モード別の初期化
+   ・求職者版 ：勤務地セクションを隠す（事故歴は表示）
+   ・代理入力版：事故歴セクションを隠す（勤務地・距離を表示）
+   ========================================================= */
+(function initMode(){
+  const workSection = document.getElementById("workSection");
+  const violSection = document.getElementById("violSection");
+  const sub = document.querySelector(".toolbar .sub");
+  if(IS_AGENT){
+    if(violSection) violSection.style.display = "none";
+    if(workSection) workSection.style.display = "";
+    if(sub) sub.textContent = "人材会社・代理入力モード｜保存されません";
+  }else{
+    if(workSection) workSection.style.display = "none";
+    if(violSection) violSection.style.display = "";
+  }
+})();
 
 /* ===== 初期描画 ===== */
 renderLicenses();
